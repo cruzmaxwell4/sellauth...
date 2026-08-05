@@ -1,0 +1,11 @@
+{
+  "claimRoleTiers": [
+    { "min": 1, "roleId": "PUT_1_DOLLAR_ROLE_ID_HERE", "label": "$1+" },
+    { "min": 50, "roleId": "PUT_50_DOLLAR_ROLE_ID_HERE", "label": "$50+" },
+    { "min": 300, "roleId": "PUT_300_DOLLAR_ROLE_ID_HERE", "label": "$300+" }
+  ],
+  "priceDropImage": "https://cdn.corenexis.com/f/tG5Cl11ypak.png",
+  "storefrontDomain": "",
+  "replaceLogChannelId": "",
+  "ticketLogChannelId": ""
+}
