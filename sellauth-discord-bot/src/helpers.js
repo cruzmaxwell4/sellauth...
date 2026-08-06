@@ -51,4 +51,25 @@ function decodeEmail(encoded) {
   return Buffer.from(encoded, 'base64url').toString('utf8');
 }
 
-module.exports = { money, formatDate, errorEmbed, truncate, chunkText, encodeEmail, decodeEmail };
+// Digs through the various possible shapes a stock item can come back in
+// and returns its displayable content (account/serial/key/etc).
+function stockItemContent(stockItem) {
+  return (
+    stockItem.value ||
+    stockItem.content ||
+    stockItem.data ||
+    stockItem.text ||
+    JSON.stringify(stockItem)
+  );
+}
+
+module.exports = {
+  money,
+  formatDate,
+  errorEmbed,
+  truncate,
+  chunkText,
+  encodeEmail,
+  decodeEmail,
+  stockItemContent,
+};

@@ -36,7 +36,7 @@ module.exports = {
     checks.push({
       label: 'Discord: Manage Roles permission',
       ok: me.permissions.has(PermissionsBitField.Flags.ManageRoles),
-      detail: me.permissions.has(PermissionsBitField.Flags.ManageRoles) ? 'OK' : 'MISSING - needed for claim panel / replace',
+      detail: me.permissions.has(PermissionsBitField.Flags.ManageRoles) ? 'OK' : 'MISSING - needed for claim panel',
     });
 
     // SellAuth API checks

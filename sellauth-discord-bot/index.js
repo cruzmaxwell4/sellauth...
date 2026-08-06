@@ -16,10 +16,11 @@ const {
   Routes,
 } = require('discord.js');
 
-const { decodeEmail, errorEmbed } = require('./src/helpers');
+const { decodeEmail, errorEmbed, truncate, stockItemContent } = require('./src/helpers');
 const { buildEmailHistoryEmbed } = require('./src/emailLookup');
 const { resolveClaim } = require('./src/claimRole');
 const { buildDeliveredEmbed } = require('./src/deliveredLookup');
+const { isOwner } = require('./src/permissions');
 const sellauth = require('./src/sellauthApi');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -111,6 +112,97 @@ client.on('interactionCreate', async (interaction) => {
           await interaction.editReply({ embeds: [embed] });
         } catch (err) {
           await interaction.editReply({ embeds: [errorEmbed('Could not fetch delivered content', err)] });
+        }
+        return;
+      }
+
+      if (interaction.customId.startsWith('replace_item:')) {
+        const [, ownerId, invoiceId] = interaction.customId.split(':');
+        if (!isOwner(interaction) || interaction.user.id !== ownerId) {
+          await interaction.reply({
+            content: '🚫 Only the bot owner can replace an item on this invoice.',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        await interaction.deferReply();
+
+        try {
+          const invoice = await sellauth.getInvoice(invoiceId);
+          const item = (invoice.items && invoice.items[0]) || {};
+          const productName = item.product_name || item.product?.name || 'Unknown product';
+          const variantName = item.variant_name || item.variant?.name || 'N/A';
+          const variantId =
+            item.variant_id || item.variantId || item.variant?.id || item.product_variant_id;
+
+          if (!variantId) {
+            await interaction.editReply('❌ Could not determine the variant for this invoice item.');
+            return;
+          }
+
+          let stockItem;
+          try {
+            const result = await sellauth.getNextStockItem(variantId);
+            stockItem = result.item;
+          } catch (stockErr) {
+            await interaction.editReply({
+              embeds: [errorEmbed('No available stock item found for that variant', stockErr)],
+            });
+            return;
+          }
+
+          if (!stockItem) {
+            await interaction.editReply('❌ No available stock items found for that variant.');
+            return;
+          }
+
+          const content = stockItemContent(stockItem);
+
+          // Best-effort DM to the customer, trying every plausible field
+          // SellAuth might use to link the invoice back to a Discord user.
+          const discordId =
+            invoice.discord_id ||
+            invoice.customer?.discord_id ||
+            invoice.customer_id ||
+            invoice.custom_fields?.discord_id;
+
+          let dmSent = false;
+          if (discordId) {
+            try {
+              const user = await interaction.client.users.fetch(String(discordId));
+              const dmEmbed = new EmbedBuilder()
+                .setColor(0x57f287)
+                .setTitle('📦 Your item has been replaced')
+                .setDescription(
+                  `**${truncate(productName, 60)} — ${truncate(variantName, 60)}**\n\`\`\`${truncate(
+                    String(content),
+                    1900
+                  )}\`\`\``
+                )
+                .setFooter({ text: `Invoice #${invoice.id ?? invoice.unique_id}` })
+                .setTimestamp();
+              await user.send({ embeds: [dmEmbed] });
+              dmSent = true;
+            } catch (dmErr) {
+              console.log('[replace_item] Could not DM customer:', dmErr.message);
+            }
+          }
+
+          await interaction.channel.send(
+            `📦Replaced📦 Invoice #${invoice.id ?? invoice.unique_id} - ${productName} ${variantName}: ${truncate(
+              String(content),
+              1500
+            )}`
+          );
+
+          await sellauth.deleteStockItem(stockItem.id);
+
+          await interaction.editReply(
+            `✅ Replaced the item for invoice \`${invoiceId}\`${dmSent ? ' and sent it to the customer via DM.' : ' (could not DM the customer — posted in chat instead).'}`
+          );
+        } catch (err) {
+          await interaction.editReply({ embeds: [errorEmbed('Could not replace item', err)] });
         }
         return;
       }

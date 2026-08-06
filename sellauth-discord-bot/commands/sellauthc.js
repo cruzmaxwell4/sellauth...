@@ -16,7 +16,6 @@ module.exports = {
           '`/sellauthdomain` — add/list/remove your store domain',
           '`/sellauthemail` — last 50 purchases for an email',
           '`/sellauthclaimpanel` — send the invoice → role claim panel',
-          '`/sellauthreplace` — replace a delivered item with a fresh one',
           '`/sellauthmark` — mark a manual (e.g. PayPal) invoice as paid',
           '`/sellauthc` — this list',
           '`/sellauthlink` — get a checkout link for a product',
