@@ -75,6 +75,75 @@ async function requestRoot(context, fn) {
   }
 }
 
+// SellAuth does not publicly document a "replace delivered item" endpoint.
+// We try a handful of plausible endpoint/method combinations in order,
+// logging the full SellAuth response for each failed attempt so we can
+// figure out which one (if any) actually works. The first attempt that
+// succeeds wins; if all fail we throw an error that includes details from
+// every attempt.
+async function replaceDelivered(invoiceId, itemId, body) {
+  const api = client();
+
+  const attempts = [
+    {
+      method: 'post',
+      path: `/invoices/${invoiceId}/deliver`,
+      body: { invoice_item_id: itemId, ...body },
+    },
+    {
+      method: 'put',
+      path: `/invoices/${invoiceId}/items`,
+      body: { invoice_item_id: itemId, ...body },
+    },
+    {
+      method: 'patch',
+      path: `/invoices/${invoiceId}/items/${itemId}`,
+      body,
+    },
+    {
+      method: 'post',
+      path: `/invoices/${invoiceId}/replace-delivered`,
+      body: { item_id: itemId, ...body },
+    },
+  ];
+
+  const failures = [];
+
+  for (const attempt of attempts) {
+    const url = `${api.defaults.baseURL}${attempt.path}`;
+    console.log(
+      `[sellauthApi] Trying ${attempt.method.toUpperCase()} ${url} | Body: ${JSON.stringify(attempt.body)}`
+    );
+
+    try {
+      const res = await api[attempt.method](attempt.path, attempt.body);
+      console.log(
+        `[sellauthApi] Success with ${attempt.method.toUpperCase()} ${attempt.path} | Response: ${JSON.stringify(
+          res.data
+        )}`
+      );
+      return res.data;
+    } catch (err) {
+      const status = err.response ? err.response.status : null;
+      const data = err.response ? err.response.data : null;
+      console.log(
+        `[sellauthApi] Attempt failed -> ${attempt.method.toUpperCase()} ${attempt.path} | Status: ${status} | Response: ${JSON.stringify(
+          data
+        )} | Error: ${err.message}`
+      );
+      failures.push(
+        `${attempt.method.toUpperCase()} ${attempt.path} -> HTTP ${status}: ${
+          (data && (data.message || JSON.stringify(data.errors) || JSON.stringify(data))) || err.message
+        }`
+      );
+    }
+  }
+
+  throw new Error(
+    `Replace delivered items failed — no known endpoint worked. Attempts:\n${failures.join('\n')}`
+  );
+}
+
 module.exports = {
   // -- Shop / connectivity --------------------------------------------
   getShops: () => requestRoot('Get shops', (api) => api.get('/shops')),
@@ -85,17 +154,7 @@ module.exports = {
   listInvoices: (params) => request('List invoices', (api) => api.get('/invoices', { params })),
   processInvoice: (invoiceId) =>
     request('Process invoice', (api) => api.post(`/invoices/${invoiceId}/process`)),
-  replaceDelivered: (invoiceId, itemId, body) =>
-    request('Replace delivered items', (api) => {
-      const path = `/invoices/${invoiceId}/replace-delivered`;
-      const payload = { item_id: itemId, ...body };
-      console.log(
-        `[sellauthApi] Replace delivered items request -> Method: POST | URL: ${api.defaults.baseURL}${path} | Body: ${JSON.stringify(
-          payload
-        )}`
-      );
-      return api.post(path, payload);
-    }),
+  replaceDelivered,
 
   // -- Domains -------------------------------------------------------------
   listDomains: () => request('List domains', (api) => api.get('/domains')),
