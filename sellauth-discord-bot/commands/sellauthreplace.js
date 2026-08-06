@@ -99,24 +99,25 @@ module.exports = {
         return;
       }
 
-      console.log('[sellauthreplace] Full variant object:', JSON.stringify(variant, null, 2));
-      console.log('[sellauthreplace] Variant keys:', Object.keys(variant));
-      const stockLikeKeys = Object.keys(variant).filter((key) =>
-        /stock|item|account|code|serial/i.test(key)
-      );
-      console.log('[sellauthreplace] Stock-like keys found on variant:', stockLikeKeys);
-      stockLikeKeys.forEach((key) => {
-        console.log(`[sellauthreplace] variant.${key} =`, JSON.stringify(variant[key], null, 2));
-      });
+      console.log(`[sellauthreplace] Fetching next stock item for variant ${variantId}`);
+      let stockItem;
+      try {
+        const result = await sellauth.getNextStockItem(variantId);
+        stockItem = result.item;
+        console.log(`[sellauthreplace] Got stock item via ${result.endpoint}:`, JSON.stringify(stockItem));
+      } catch (stockErr) {
+        console.log('[sellauthreplace] Failed to fetch next stock item:', stockErr.message);
+        await interaction.editReply({
+          embeds: [errorEmbed('No available stock item found for that variant', stockErr)],
+        });
+        return;
+      }
 
-      const stockItems = variant.stock || variant.items || [];
-
-      if (!stockItems.length) {
+      if (!stockItem) {
         await interaction.editReply('No available stock items found for that variant.');
         return;
       }
 
-      const stockItem = stockItems[0];
       const content = stockItemContent(stockItem);
 
       const embed = new EmbedBuilder()

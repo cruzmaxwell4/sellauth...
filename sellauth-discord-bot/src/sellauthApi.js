@@ -75,6 +75,63 @@ async function requestRoot(context, fn) {
   }
 }
 
+// Attempts to fetch the next available stock item for a variant.
+// SellAuth doesn't document a single canonical endpoint for this, so we try
+// a handful of likely candidates in order and log every attempt so we can
+// see exactly which one (if any) works in production.
+async function getNextStockItem(variantId) {
+  const attempts = [
+    {
+      label: 'GET /stock/next?variant_id=',
+      run: (api) => api.get('/stock/next', { params: { variant_id: variantId } }),
+    },
+    {
+      label: 'POST /stock/next { variant_id }',
+      run: (api) => api.post('/stock/next', { variant_id: variantId }),
+    },
+    {
+      label: 'GET /variants/:id/next',
+      run: (api) => api.get(`/variants/${variantId}/next`),
+    },
+    {
+      label: 'GET /stock/next/:variantId',
+      run: (api) => api.get(`/stock/next/${variantId}`),
+    },
+    {
+      label: 'GET /variants/:id/stock/next',
+      run: (api) => api.get(`/variants/${variantId}/stock/next`),
+    },
+  ];
+
+  const api = client();
+  const errors = [];
+
+  for (const attempt of attempts) {
+    try {
+      console.log(`[sellauthApi] getNextStockItem: trying ${attempt.label} (variant_id=${variantId})`);
+      const res = await attempt.run(api);
+      console.log(
+        `[sellauthApi] getNextStockItem: ${attempt.label} succeeded ->`,
+        JSON.stringify(res.data)
+      );
+      const item = res.data?.data || res.data;
+      if (item && (item.id || item.value || item.content)) {
+        return { item, endpoint: attempt.label };
+      }
+      console.log(`[sellauthApi] getNextStockItem: ${attempt.label} returned no usable item, continuing.`);
+    } catch (err) {
+      const status = err.response?.status;
+      const message = err.response?.data?.message || err.message;
+      console.log(`[sellauthApi] getNextStockItem: ${attempt.label} failed (HTTP ${status}): ${message}`);
+      errors.push(`${attempt.label} -> HTTP ${status}: ${message}`);
+    }
+  }
+
+  throw new Error(
+    `Could not find a working "next stock item" endpoint for variant ${variantId}. Attempts:\n${errors.join('\n')}`
+  );
+}
+
 module.exports = {
   // -- Shop / connectivity --------------------------------------------
   getShops: () => requestRoot('Get shops', (api) => api.get('/shops')),
@@ -110,6 +167,7 @@ module.exports = {
     request('Get product', (api) => api.get(`/products/${productId}`)),
   deleteStockItem: (stockItemId) =>
     request('Delete stock item', (api) => api.delete(`/stock/${stockItemId}`)),
+  getNextStockItem: (variantId) => getNextStockItem(variantId),
 
   // -- Tickets -----------------------------------------------------------------
   listTickets: (params) => request('List tickets', (api) => api.get('/tickets', { params })),
