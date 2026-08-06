@@ -76,35 +76,96 @@ async function requestRoot(context, fn) {
 }
 
 // Attempts to fetch the next available stock item for a variant.
-// SellAuth doesn't document a single canonical endpoint for this, so we try
-// a handful of likely candidates in order and log every attempt so we can
-// see exactly which one (if any) works in production.
+// SellAuth's documented per-variant "next stock" endpoints 404 in practice,
+// so we first fetch the full unfiltered stock list and filter client-side.
+// If that doesn't turn up a match we fall back to a handful of other likely
+// candidate endpoints, logging every attempt so we can see exactly which
+// one (if any) works in production.
+
+// Digs through a variety of possible response shapes (plain array, Laravel
+// style { data: [...] }, nested paginator { data: { data: [...] } }, etc.)
+// and returns the first array it finds.
+function extractList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  if (payload && payload.data && Array.isArray(payload.data.data)) return payload.data.data;
+  if (payload && Array.isArray(payload.stock)) return payload.stock;
+  if (payload && Array.isArray(payload.items)) return payload.items;
+  return null;
+}
+
+function matchesVariant(stockItem, variantId) {
+  const candidates = [
+    stockItem.variant_id,
+    stockItem.variantId,
+    stockItem.variant?.id,
+    stockItem.product_variant_id,
+  ];
+  return candidates.some((value) => value != null && String(value) === String(variantId));
+}
+
 async function getNextStockItem(variantId) {
+  const api = client();
+  const errors = [];
+
+  // First, try fetching ALL stock unfiltered and picking the first item that
+  // matches the requested variant client-side. SellAuth's documented
+  // per-variant "next stock" endpoints appear to 404 in practice, but the
+  // plain /stock listing does work and includes every item across variants.
+  try {
+    console.log(`[sellauthApi] getNextStockItem: trying GET /stock (unfiltered) (variant_id=${variantId})`);
+    const res = await api.get('/stock');
+    console.log(
+      `[sellauthApi] getNextStockItem: GET /stock (unfiltered) succeeded, response shape keys ->`,
+      JSON.stringify(Object.keys(res.data || {}))
+    );
+    const list = extractList(res.data);
+    if (list) {
+      const match = list.find((stockItem) => matchesVariant(stockItem, variantId));
+      if (match) {
+        console.log(
+          `[sellauthApi] getNextStockItem: GET /stock (unfiltered) found matching item ->`,
+          JSON.stringify(match)
+        );
+        return { item: match, endpoint: 'GET /stock (unfiltered, client-side filter)' };
+      }
+      console.log(
+        `[sellauthApi] getNextStockItem: GET /stock (unfiltered) returned ${list.length} item(s) but none matched variant ${variantId}, continuing.`
+      );
+    } else {
+      console.log(
+        `[sellauthApi] getNextStockItem: GET /stock (unfiltered) returned an unrecognized shape, continuing.`
+      );
+    }
+  } catch (err) {
+    const status = err.response?.status;
+    const message = err.response?.data?.message || err.message;
+    console.log(`[sellauthApi] getNextStockItem: GET /stock (unfiltered) failed (HTTP ${status}): ${message}`);
+    errors.push(`GET /stock (unfiltered) -> HTTP ${status}: ${message}`);
+  }
+
   const attempts = [
     {
       label: 'GET /stock/next?variant_id=',
-      run: (api) => api.get('/stock/next', { params: { variant_id: variantId } }),
+      run: (apiClient) => apiClient.get('/stock/next', { params: { variant_id: variantId } }),
     },
     {
       label: 'POST /stock/next { variant_id }',
-      run: (api) => api.post('/stock/next', { variant_id: variantId }),
+      run: (apiClient) => apiClient.post('/stock/next', { variant_id: variantId }),
     },
     {
       label: 'GET /variants/:id/next',
-      run: (api) => api.get(`/variants/${variantId}/next`),
+      run: (apiClient) => apiClient.get(`/variants/${variantId}/next`),
     },
     {
       label: 'GET /stock/next/:variantId',
-      run: (api) => api.get(`/stock/next/${variantId}`),
+      run: (apiClient) => apiClient.get(`/stock/next/${variantId}`),
     },
     {
       label: 'GET /variants/:id/stock/next',
-      run: (api) => api.get(`/variants/${variantId}/stock/next`),
+      run: (apiClient) => apiClient.get(`/variants/${variantId}/stock/next`),
     },
   ];
-
-  const api = client();
-  const errors = [];
 
   for (const attempt of attempts) {
     try {
