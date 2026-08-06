@@ -99,8 +99,7 @@ module.exports = {
         return;
       }
 
-      const stockResult = await sellauth.getVariantStock(productId, variantId);
-      const stockItems = stockResult.data || stockResult.stock || stockResult || [];
+      const stockItems = variant.stock || variant.items || [];
 
       if (!stockItems.length) {
         await interaction.editReply('No available stock items found for that variant.');
