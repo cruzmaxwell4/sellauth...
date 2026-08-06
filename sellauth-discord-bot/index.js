@@ -23,13 +23,20 @@ client.commands = new Collection();
 
 // ---- Load commands -----------------------------------------------------
 const commandsPath = path.join(__dirname, 'commands');
-for (const file of fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'))) {
+const commandFiles = fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'));
+
+console.log(`📦 Loading ${commandFiles.length} commands...`);
+for (const file of commandFiles) {
   const command = require(path.join(commandsPath, file));
-  client.commands.set(command.data.name, command);
+  if (command.data && command.data.name) {
+    client.commands.set(command.data.name, command);
+    console.log(`  ✓ ${command.data.name}`);
+  }
 }
 
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log(`📋 ${client.commands.size} commands loaded and ready`);
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -37,7 +44,10 @@ client.on('interactionCreate', async (interaction) => {
     // ---- Slash commands ------------------------------------------------
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
-      if (!command) return;
+      if (!command) {
+        console.warn(`⚠️ Command not found: ${interaction.commandName}`);
+        return;
+      }
       await command.execute(interaction);
       return;
     }
@@ -135,3 +145,4 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.login(process.env.BOT_TOKEN);
+
