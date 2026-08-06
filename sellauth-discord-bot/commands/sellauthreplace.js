@@ -11,6 +11,9 @@ module.exports = {
     .addStringOption((opt) =>
       opt.setName('invoice_id').setDescription('The invoice ID to replace').setRequired(true)
     )
+    .addStringOption((opt) =>
+      opt.setName('replacement').setDescription('The replacement value for the new item').setRequired(true)
+    )
     .addRoleOption((opt) =>
       opt.setName('notify_role').setDescription('Role to notify with the replacement result').setRequired(true)
     ),
@@ -20,6 +23,7 @@ module.exports = {
     await interaction.deferReply();
 
     const invoiceId = interaction.options.getString('invoice_id');
+    const replacement = interaction.options.getString('replacement');
     const role = interaction.options.getRole('notify_role');
 
     try {
@@ -31,15 +35,10 @@ module.exports = {
         return;
       }
 
-      // NOTE: SellAuth's "replace delivered" endpoint expects an
-      // invoice_item_id and a replacements object. The exact shape of
-      // `replacements` isn't fully documented publicly - sending an empty
-      // object asks SellAuth to auto-pull a fresh item from stock. If your
-      // shop needs a different shape, check the raw error below and adjust
-      // the body in src/sellauthApi.js -> replaceDelivered().
+      // Send the replacement to the SellAuth API
       const result = await sellauth.replaceDelivered(invoiceId, {
         invoice_item_id: item.id,
-        replacements: {},
+        replacement: replacement,
       });
 
       const embed = new EmbedBuilder()
@@ -49,8 +48,8 @@ module.exports = {
           `Invoice \`${invoiceId}\` — **${truncate(item.product_name || 'Unknown product', 60)}** was replaced.`
         )
         .addFields({
-          name: 'New delivered content',
-          value: '```\n' + truncate(JSON.stringify(result, null, 2), 1000) + '\n```',
+          name: 'Replacement',
+          value: truncate(replacement, 1000),
         })
         .setTimestamp();
 
@@ -64,3 +63,4 @@ module.exports = {
     }
   },
 };
+
