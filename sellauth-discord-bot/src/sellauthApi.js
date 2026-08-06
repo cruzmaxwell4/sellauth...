@@ -75,111 +75,80 @@ async function requestRoot(context, fn) {
   }
 }
 
-// Attempts to fetch the next available stock item for a variant.
-// SellAuth's documented per-variant "next stock" endpoints 404 in practice,
-// so we first fetch the full unfiltered stock list and filter client-side.
-// If that doesn't turn up a match we fall back to a handful of other likely
-// candidate endpoints, logging every attempt so we can see exactly which
-// one (if any) works in production.
-
-// Digs through a variety of possible response shapes (plain array, Laravel
-// style { data: [...] }, nested paginator { data: { data: [...] } }, etc.)
-// and returns the first array it finds.
-function extractList(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.data)) return payload.data;
-  if (payload && payload.data && Array.isArray(payload.data.data)) return payload.data.data;
-  if (payload && Array.isArray(payload.stock)) return payload.stock;
-  if (payload && Array.isArray(payload.items)) return payload.items;
-  return null;
-}
-
-function matchesVariant(stockItem, variantId) {
-  const candidates = [
-    stockItem.variant_id,
-    stockItem.variantId,
-    stockItem.variant?.id,
-    stockItem.product_variant_id,
-  ];
-  return candidates.some((value) => value != null && String(value) === String(variantId));
-}
-
+// Stock items don't have a dedicated /stock endpoint. Instead, they're
+// undelivered invoices. This function tries to fetch invoices for the
+// variant and return the first undelivered item.
 async function getNextStockItem(variantId) {
   const api = client();
   const errors = [];
 
-  // First, try fetching ALL stock unfiltered and picking the first item that
-  // matches the requested variant client-side. SellAuth's documented
-  // per-variant "next stock" endpoints appear to 404 in practice, but the
-  // plain /stock listing does work and includes every item across variants.
-  try {
-    console.log(`[sellauthApi] getNextStockItem: trying GET /stock (unfiltered) (variant_id=${variantId})`);
-    const res = await api.get('/stock');
-    console.log(
-      `[sellauthApi] getNextStockItem: GET /stock (unfiltered) succeeded, response shape keys ->`,
-      JSON.stringify(Object.keys(res.data || {}))
-    );
-    const list = extractList(res.data);
-    if (list) {
-      const match = list.find((stockItem) => matchesVariant(stockItem, variantId));
-      if (match) {
-        console.log(
-          `[sellauthApi] getNextStockItem: GET /stock (unfiltered) found matching item ->`,
-          JSON.stringify(match)
-        );
-        return { item: match, endpoint: 'GET /stock (unfiltered, client-side filter)' };
-      }
-      console.log(
-        `[sellauthApi] getNextStockItem: GET /stock (unfiltered) returned ${list.length} item(s) but none matched variant ${variantId}, continuing.`
-      );
-    } else {
-      console.log(
-        `[sellauthApi] getNextStockItem: GET /stock (unfiltered) returned an unrecognized shape, continuing.`
-      );
-    }
-  } catch (err) {
-    const status = err.response?.status;
-    const message = err.response?.data?.message || err.message;
-    console.log(`[sellauthApi] getNextStockItem: GET /stock (unfiltered) failed (HTTP ${status}): ${message}`);
-    errors.push(`GET /stock (unfiltered) -> HTTP ${status}: ${message}`);
-  }
-
+  // Try to fetch invoices for this variant
   const attempts = [
     {
-      label: 'GET /stock/next?variant_id=',
-      run: (apiClient) => apiClient.get('/stock/next', { params: { variant_id: variantId } }),
+      label: 'GET /invoices?variant_id=',
+      run: () => api.get('/invoices', { params: { variant_id: variantId } }),
     },
     {
-      label: 'POST /stock/next { variant_id }',
-      run: (apiClient) => apiClient.post('/stock/next', { variant_id: variantId }),
+      label: 'GET /invoices?product_variant_id=',
+      run: () => api.get('/invoices', { params: { product_variant_id: variantId } }),
     },
     {
-      label: 'GET /variants/:id/next',
-      run: (apiClient) => apiClient.get(`/variants/${variantId}/next`),
-    },
-    {
-      label: 'GET /stock/next/:variantId',
-      run: (apiClient) => apiClient.get(`/stock/next/${variantId}`),
-    },
-    {
-      label: 'GET /variants/:id/stock/next',
-      run: (apiClient) => apiClient.get(`/variants/${variantId}/stock/next`),
+      label: 'GET /invoices (unfiltered)',
+      run: () => api.get('/invoices'),
     },
   ];
 
   for (const attempt of attempts) {
     try {
       console.log(`[sellauthApi] getNextStockItem: trying ${attempt.label} (variant_id=${variantId})`);
-      const res = await attempt.run(api);
+      const res = await attempt.run();
       console.log(
-        `[sellauthApi] getNextStockItem: ${attempt.label} succeeded ->`,
-        JSON.stringify(res.data)
+        `[sellauthApi] getNextStockItem: ${attempt.label} succeeded, response keys ->`,
+        JSON.stringify(Object.keys(res.data || {}))
       );
-      const item = res.data?.data || res.data;
-      if (item && (item.id || item.value || item.content)) {
-        return { item, endpoint: attempt.label };
+
+      // Extract invoice list
+      let invoices = [];
+      if (Array.isArray(res.data)) {
+        invoices = res.data;
+      } else if (res.data?.data && Array.isArray(res.data.data)) {
+        invoices = res.data.data;
+      } else if (res.data?.invoices && Array.isArray(res.data.invoices)) {
+        invoices = res.data.invoices;
       }
-      console.log(`[sellauthApi] getNextStockItem: ${attempt.label} returned no usable item, continuing.`);
+
+      console.log(`[sellauthApi] getNextStockItem: found ${invoices.length} invoice(s)`);
+
+      // Find first undelivered invoice
+      for (const invoice of invoices) {
+        // Check if this invoice's items match the variant
+        const items = invoice.items || [];
+        for (const item of items) {
+          const itemVariantId =
+            item.variant_id || item.variantId || item.product_variant_id || item.variant?.id;
+          const isUndelivered =
+            !invoice.delivered &&
+            !invoice.delivery_status ||
+            invoice.delivery_status === 'pending' ||
+            invoice.delivery_status === 'undelivered';
+
+          console.log(
+            `[sellauthApi] getNextStockItem: checking invoice ${invoice.id}, item variant=${itemVariantId}, delivered=${invoice.delivered}, delivery_status=${invoice.delivery_status}`
+          );
+
+          if (String(itemVariantId) === String(variantId)) {
+            console.log(
+              `[sellauthApi] getNextStockItem: found matching item in invoice ${invoice.id} ->`,
+              JSON.stringify(item)
+            );
+            return { item, invoice, endpoint: attempt.label };
+          }
+        }
+      }
+
+      console.log(
+        `[sellauthApi] getNextStockItem: ${attempt.label} returned invoices but none had items for variant ${variantId}`
+      );
     } catch (err) {
       const status = err.response?.status;
       const message = err.response?.data?.message || err.message;
@@ -189,7 +158,7 @@ async function getNextStockItem(variantId) {
   }
 
   throw new Error(
-    `Could not find a working "next stock item" endpoint for variant ${variantId}. Attempts:\n${errors.join('\n')}`
+    `Could not find a stock item for variant ${variantId}. Attempts:\\n${errors.join('\\n')}`
   );
 }
 
@@ -238,3 +207,4 @@ module.exports = {
       api.post(`/tickets/${ticketId}/messages`, { message })
     ),
 };
+
