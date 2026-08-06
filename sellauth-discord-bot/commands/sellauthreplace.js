@@ -83,6 +83,11 @@ module.exports = {
     const variantId = interaction.options.getString('variant');
     const role = interaction.options.getRole('notify_role');
 
+    console.log('[sellauthreplace] productId value:', productId);
+    console.log('[sellauthreplace] productId type:', typeof productId);
+    console.log('[sellauthreplace] productId length:', productId ? productId.length : null);
+    console.log('[sellauthreplace] productId JSON.stringify:', JSON.stringify(productId));
+
     try {
       const invoice = await sellauth.getInvoice(invoiceId);
 
