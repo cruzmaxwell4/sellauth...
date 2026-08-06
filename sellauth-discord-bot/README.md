@@ -112,7 +112,11 @@ repo on GitHub first — "New repository" — then use the URL it gives you abov
 
 This bot calls the real SellAuth API (`https://api.sellauth.com/v1`) documented at
 https://docs.sellauth.com/api-documentation. A couple of endpoints (replace-delivered body shape,
-ticket-reply endpoint) aren't fully published, so `src/sellauthApi.js` makes a reasonable best guess.
+variant stock fetch, ticket-reply endpoint) aren't fully published, so `src/sellauthApi.js` makes a
+reasonable best guess. Notably, `getVariantStock` (used by `/sellauthreplace` to pull an actual
+deliverable out of a variant's stock pool, rather than sending the variant's metadata) hits
+`/products/{productId}/variants/{variantId}/stock` — if your shop's API uses a different path,
+SellAuth's error response will tell you, so update that route in `src/sellauthApi.js` accordingly.
 If `/sellauthreplace` or `/sellauthticket` throw an error, the bot shows you SellAuth's raw error
 response — use that to tweak the request body in `src/sellauthApi.js`. Run `/sellauthcheckall` any
 time to see exactly which SellAuth endpoints are working.

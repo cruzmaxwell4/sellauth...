@@ -27,53 +27,39 @@ function extractDeliverableText(entry) {
   return null;
 }
 
-function extractVariantContent(variant) {
-  if (!variant) return null;
+// Given the response from sellauth.getVariantStock(), pull out a single
+// deliverable/stock item's textual content. The exact response shape isn't
+// fully documented, so we walk through the common wrapper shapes
+// (array response, { data: [...] }, { stock: [...] }, single object, etc.)
+// before giving up.
+function extractStockItemContent(stockResponse) {
+  if (!stockResponse) return null;
 
-  // 1. SellAuth commonly nests the actual stock/content under a
-  // `deliverables` array on the variant. Prefer this first.
-  if (Array.isArray(variant.deliverables) && variant.deliverables.length) {
-    const text = extractDeliverableText(variant.deliverables[0]);
+  // Response is directly an array of stock items.
+  if (Array.isArray(stockResponse) && stockResponse.length) {
+    const text = extractDeliverableText(stockResponse[0]);
     if (text) return text;
   }
 
-  // 2. Plain string fields directly on the variant.
-  if (typeof variant.content === 'string' && variant.content) return variant.content;
-  if (typeof variant.delivery === 'string' && variant.delivery) return variant.delivery;
-  if (typeof variant.deliverable === 'string' && variant.deliverable) return variant.deliverable;
-  if (typeof variant.value === 'string' && variant.value) return variant.value;
-
-  // 3. Other possible array fields holding stock/deliverable entries.
-  const stockList = variant.stock || variant.items || variant.stocks || variant.stock_items;
-  if (Array.isArray(stockList) && stockList.length) {
-    const text = extractDeliverableText(stockList[0]);
-    if (text) return text;
-  }
-
-  // 4. Sometimes the variant object itself *is* the deliverable (e.g. when
-  // the API returns a flattened stock entry rather than a variant wrapper).
-  // If it has an identifiable stock indicator and no nested structure was
-  // found above, treat the variant as the deliverable content itself.
-  const looksLikeStockCount = Number(variant.stock_count ?? variant.quantity ?? variant.stock);
-  const hasStock = !Number.isNaN(looksLikeStockCount) ? looksLikeStockCount > 0 : true;
-  if (hasStock && (variant.content !== undefined || variant.data !== undefined)) {
-    const text = extractDeliverableText(variant.content) || extractDeliverableText(variant.data);
-    if (text) return text;
-  }
-
-  // 5. Last resort: if the variant has *some* content-bearing fields, fall
-  // back to a JSON representation so we don't falsely report "no stock"
-  // when data is actually present in an unexpected shape.
-  const hasAnyContentField = ['content', 'delivery', 'deliverable', 'value', 'data', 'deliverables', 'stock', 'items']
-    .some((key) => variant[key] !== undefined && variant[key] !== null);
-  if (hasAnyContentField) {
-    try {
-      const json = JSON.stringify(variant.deliverables || variant.content || variant.data || variant);
-      if (json && json !== '{}' && json !== '[]' && json !== 'null') return json;
-    } catch (err) {
-      // ignore stringify errors and fall through to null
+  if (typeof stockResponse === 'object') {
+    // Response wraps the items in a common "list" key.
+    const list =
+      stockResponse.data ||
+      stockResponse.stock ||
+      stockResponse.items ||
+      stockResponse.stocks ||
+      stockResponse.stock_items;
+    if (Array.isArray(list) && list.length) {
+      const text = extractDeliverableText(list[0]);
+      if (text) return text;
     }
+
+    // Response is a single stock item object itself.
+    const text = extractDeliverableText(stockResponse);
+    if (text) return text;
   }
+
+  if (typeof stockResponse === 'string' && stockResponse) return stockResponse;
 
   return null;
 }
@@ -175,7 +161,12 @@ module.exports = {
         return;
       }
 
-      const replacement = extractVariantContent(variant);
+      // Pull an actual deliverable out of the variant's stock pool. The
+      // variant object itself only carries metadata (e.g. `stock: 69` is a
+      // count of available items, not an item) so we need a dedicated call
+      // to fetch a real stock item to deliver.
+      const stockResponse = await sellauth.getVariantStock(productId, variant.id);
+      const replacement = extractStockItemContent(stockResponse);
 
       if (!replacement) {
         await interaction.editReply(

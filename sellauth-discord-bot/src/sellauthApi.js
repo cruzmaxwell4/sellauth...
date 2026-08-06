@@ -112,6 +112,14 @@ module.exports = {
   listProducts: (params) => request('List products', (api) => api.get('/products', { params })),
   getProduct: (productId) =>
     request('Get product', (api) => api.get(`/products/${productId}`)),
+  // Pulls an actual deliverable/item out of a variant's stock pool (not the
+  // variant metadata itself). SellAuth doesn't fully publish this endpoint,
+  // so this hits the documented "variant stock" route; if your shop's API
+  // uses a different path, tweak this to match the error SellAuth returns.
+  getVariantStock: (productId, variantId, params) =>
+    request('Get variant stock', (api) =>
+      api.get(`/products/${productId}/variants/${variantId}/stock`, { params })
+    ),
 
   // -- Tickets -----------------------------------------------------------------
   listTickets: (params) => request('List tickets', (api) => api.get('/tickets', { params })),
