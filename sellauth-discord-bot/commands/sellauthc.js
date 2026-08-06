@@ -27,6 +27,7 @@ module.exports = {
           '`/sellautrev` — revenue over 1 day / 10 days / 1 month / lifetime',
           '`/sellauthpricedrop` — post a price drop announcement panel',
           '`/sellauthupdates` — check for SellAuth platform updates',
+          '`/howtogetinvoice` — shows customers where to find their Invoice ID',
         ].join('\n')
       )
       .setFooter({ text: 'SellAuth Discord Bot' });
