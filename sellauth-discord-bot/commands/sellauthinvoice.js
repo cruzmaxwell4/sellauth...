@@ -75,6 +75,14 @@ module.exports = {
           .setStyle(ButtonStyle.Secondary)
       );
 
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId(`replace_item:${interaction.user.id}:${invoiceId}`)
+          .setLabel('Replace')
+          .setEmoji('🔄')
+          .setStyle(ButtonStyle.Danger)
+      );
+
       const row = new ActionRowBuilder().addComponents(buttons);
 
       await interaction.editReply({ embeds: [embed], components: [row] });
