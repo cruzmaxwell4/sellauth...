@@ -86,9 +86,15 @@ module.exports = {
   processInvoice: (invoiceId) =>
     request('Process invoice', (api) => api.post(`/invoices/${invoiceId}/process`)),
   replaceDelivered: (invoiceId, itemId, body) =>
-    request('Replace delivered items', (api) =>
-      api.post(`/invoices/${invoiceId}/items/${itemId}/replace`, body)
-    ),
+    request('Replace delivered items', (api) => {
+      const path = `/invoices/${invoiceId}/items/${itemId}/replace`;
+      console.log(
+        `[sellauthApi] Replace delivered items request -> Method: POST | URL: ${api.defaults.baseURL}${path} | Body: ${JSON.stringify(
+          body
+        )}`
+      );
+      return api.post(path, body);
+    }),
 
   // -- Domains -------------------------------------------------------------
   listDomains: () => request('List domains', (api) => api.get('/domains')),
