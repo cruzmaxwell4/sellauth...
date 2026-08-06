@@ -75,70 +75,6 @@ async function requestRoot(context, fn) {
   }
 }
 
-// SellAuth's docs are inconsistent about where variant stock actually lives,
-// so we try a handful of known/likely endpoint shapes in order and log every
-// attempt (request + response/error) to make it easy to see which one the
-// account's API version actually supports. The first one that responds
-// successfully wins; if all fail we throw an error summarizing every attempt.
-async function getVariantStockWithFallback(productId, variantId) {
-  const api = client();
-
-  const attempts = [
-    {
-      label: `GET /stock?variant_id=${variantId}`,
-      call: () => api.get('/stock', { params: { variant_id: variantId } }),
-    },
-    {
-      label: `GET /variants/${variantId}/stock`,
-      call: () => api.get(`/variants/${variantId}/stock`),
-    },
-    {
-      label: `GET /products/${productId}/stock`,
-      call: () => api.get(`/products/${productId}/stock`),
-    },
-    {
-      label: `GET /stock (filtered client-side by variant_id=${variantId})`,
-      call: () => api.get('/stock'),
-    },
-  ];
-
-  const errors = [];
-
-  for (const attempt of attempts) {
-    console.log(`[getVariantStock] Attempting ${attempt.label}`);
-    try {
-      const res = await attempt.call();
-      console.log(
-        `[getVariantStock] Success on ${attempt.label} — status ${res.status}, response:`,
-        JSON.stringify(res.data)
-      );
-
-      // The last attempt fetches all stock, so filter it down to the variant we care about.
-      let data = res.data;
-      if (attempt.label.startsWith('GET /stock (filtered')) {
-        const list = data?.data || data?.stock || data || [];
-        if (Array.isArray(list)) {
-          data = list.filter(
-            (item) => String(item.variant_id ?? item.variantId) === String(variantId)
-          );
-        }
-      }
-
-      return data;
-    } catch (err) {
-      const status = err.response?.status;
-      const body = err.response?.data;
-      console.log(
-        `[getVariantStock] Failed ${attempt.label} — status ${status ?? 'N/A'}, response:`,
-        body ? JSON.stringify(body) : err.message
-      );
-      errors.push(`${attempt.label} -> HTTP ${status ?? 'N/A'}: ${err.message}`);
-    }
-  }
-
-  throw new Error(`Get variant stock failed on all attempted endpoints:\n${errors.join('\n')}`);
-}
-
 module.exports = {
   // -- Shop / connectivity --------------------------------------------
   getShops: () => requestRoot('Get shops', (api) => api.get('/shops')),
@@ -172,7 +108,6 @@ module.exports = {
   listProducts: (params) => request('List products', (api) => api.get('/products', { params })),
   getProduct: (productId) =>
     request('Get product', (api) => api.get(`/products/${productId}`)),
-  getVariantStock: (productId, variantId) => getVariantStockWithFallback(productId, variantId),
   deleteStockItem: (stockItemId) =>
     request('Delete stock item', (api) => api.delete(`/stock/${stockItemId}`)),
 
