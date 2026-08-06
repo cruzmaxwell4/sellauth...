@@ -85,9 +85,9 @@ module.exports = {
   listInvoices: (params) => request('List invoices', (api) => api.get('/invoices', { params })),
   processInvoice: (invoiceId) =>
     request('Process invoice', (api) => api.post(`/invoices/${invoiceId}/process`)),
-  replaceDelivered: (invoiceId, body) =>
+  replaceDelivered: (invoiceId, itemId, body) =>
     request('Replace delivered items', (api) =>
-      api.post(`/invoices/${invoiceId}/replace-delivered`, body)
+      api.post(`/invoices/${invoiceId}/items/${itemId}/replace`, body)
     ),
 
   // -- Domains -------------------------------------------------------------
