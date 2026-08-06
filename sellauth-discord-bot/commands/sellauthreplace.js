@@ -99,6 +99,16 @@ module.exports = {
         return;
       }
 
+      console.log('[sellauthreplace] Full variant object:', JSON.stringify(variant, null, 2));
+      console.log('[sellauthreplace] Variant keys:', Object.keys(variant));
+      const stockLikeKeys = Object.keys(variant).filter((key) =>
+        /stock|item|account|code|serial/i.test(key)
+      );
+      console.log('[sellauthreplace] Stock-like keys found on variant:', stockLikeKeys);
+      stockLikeKeys.forEach((key) => {
+        console.log(`[sellauthreplace] variant.${key} =`, JSON.stringify(variant[key], null, 2));
+      });
+
       const stockItems = variant.stock || variant.items || [];
 
       if (!stockItems.length) {
