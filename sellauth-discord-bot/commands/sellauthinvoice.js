@@ -55,15 +55,29 @@ module.exports = {
       const invoice = await sellauth.getInvoice(invoiceId);
       const embed = buildInvoiceEmbed(invoice);
 
-      const row = new ActionRowBuilder().addComponents(
+      const buttons = [];
+
+      if (invoice.email) {
+        buttons.push(
+          new ButtonBuilder()
+            .setCustomId(`checkemail:${encodeEmail(invoice.email || '')}`)
+            .setLabel('Check email')
+            .setEmoji('📧')
+            .setStyle(ButtonStyle.Primary)
+        );
+      }
+
+      buttons.push(
         new ButtonBuilder()
-          .setCustomId(`checkemail:${encodeEmail(invoice.email || '')}`)
-          .setLabel('Check email')
-          .setEmoji('📧')
-          .setStyle(ButtonStyle.Primary)
+          .setCustomId(`show_delivered:${interaction.user.id}:${invoiceId}`)
+          .setLabel('Delivered')
+          .setEmoji('📦')
+          .setStyle(ButtonStyle.Secondary)
       );
 
-      await interaction.editReply({ embeds: [embed], components: invoice.email ? [row] : [] });
+      const row = new ActionRowBuilder().addComponents(buttons);
+
+      await interaction.editReply({ embeds: [embed], components: [row] });
     } catch (err) {
       await interaction.editReply({ embeds: [errorEmbed('Could not fetch invoice', err)] });
     }
