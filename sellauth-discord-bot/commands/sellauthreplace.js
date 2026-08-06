@@ -10,13 +10,20 @@ function variantLabel(variant) {
   return stockCount != null ? `${name} (stock: ${stockCount})` : name;
 }
 
+function stockItemContent(stockItem) {
+  return (
+    stockItem.value ||
+    stockItem.content ||
+    stockItem.data ||
+    stockItem.text ||
+    JSON.stringify(stockItem)
+  );
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('sellauthreplace')
-    .setDescription('Replaces the delivered account/item on an invoice with a fresh one from stock.')
-    .addStringOption((opt) =>
-      opt.setName('invoice_id').setDescription('The invoice ID to replace').setRequired(true)
-    )
+    .setDescription('Pulls a fresh stock item from a variant, shows it, and removes it from stock.')
     .addStringOption((opt) =>
       opt
         .setName('product_id')
@@ -32,7 +39,7 @@ module.exports = {
         .setAutocomplete(true)
     )
     .addRoleOption((opt) =>
-      opt.setName('notify_role').setDescription('Role to notify with the replacement result').setRequired(true)
+      opt.setName('notify_role').setDescription('Role to notify with the stock item').setRequired(true)
     ),
 
   async autocomplete(interaction) {
@@ -78,32 +85,11 @@ module.exports = {
     if (!(await requireOwner(interaction))) return;
     await interaction.deferReply();
 
-    const invoiceId = interaction.options.getString('invoice_id');
     const productId = interaction.options.getString('product_id');
     const variantId = interaction.options.getString('variant');
     const role = interaction.options.getRole('notify_role');
 
-    console.log('[sellauthreplace] productId value:', productId);
-    console.log('[sellauthreplace] productId type:', typeof productId);
-    console.log('[sellauthreplace] productId length:', productId ? productId.length : null);
-    console.log('[sellauthreplace] productId JSON.stringify:', JSON.stringify(productId));
-
     try {
-      const invoice = await sellauth.getInvoice(invoiceId);
-
-      console.log('[sellauthreplace] full invoice object:', JSON.stringify(invoice, null, 2));
-      console.log('[sellauthreplace] invoice.items:', JSON.stringify(invoice.items, null, 2));
-
-      const item = (invoice.items && invoice.items[0]) || null;
-
-      console.log('[sellauthreplace] extracted item:', JSON.stringify(item, null, 2));
-      console.log('[sellauthreplace] item.id:', item && item.id);
-
-      if (!item) {
-        await interaction.editReply('This invoice has no items to replace.');
-        return;
-      }
-
       const product = await sellauth.getProduct(productId);
       const variants = product.variants || product.data?.variants || [];
       const variant = variants.find((v) => String(v.id) === String(variantId));
@@ -113,32 +99,25 @@ module.exports = {
         return;
       }
 
-      // SellAuth's "replace delivered" endpoint expects an invoice_item_id
-      // and a `replacements` object. Passing the variant_id lets SellAuth
-      // automatically pull a fresh item from that variant's stock pool —
-      // we don't need to fetch/extract the stock item ourselves.
-      const replaceDeliveredBody = {
-        invoice_item_id: item.id,
-        replacements: {
-          variant_id: variant.id,
-        },
-      };
+      const stockResult = await sellauth.getVariantStock(productId, variantId);
+      const stockItems = stockResult.data || stockResult.stock || stockResult || [];
 
-      console.log(
-        '[sellauthreplace] replaceDeliveredBody:',
-        JSON.stringify(replaceDeliveredBody, null, 2)
-      );
+      if (!stockItems.length) {
+        await interaction.editReply('No available stock items found for that variant.');
+        return;
+      }
 
-      const result = await sellauth.replaceDelivered(invoiceId, item.id, replaceDeliveredBody);
+      const stockItem = stockItems[0];
+      const content = stockItemContent(stockItem);
 
       const embed = new EmbedBuilder()
         .setColor(0x57f287)
-        .setTitle('🔄 Item replaced')
+        .setTitle('📦 Stock item')
         .setDescription(
-          `Invoice \`${invoiceId}\` — **${truncate(item.product_name || 'Unknown product', 60)}** was replaced with **${truncate(
-            product.name || 'Unknown product',
-            60
-          )} — ${truncate(variantLabel(variant), 60)}**.`
+          `**${truncate(product.name || 'Unknown product', 60)} — ${truncate(variantLabel(variant), 60)}**\n\`\`\`${truncate(
+            String(content),
+            1900
+          )}\`\`\``
         )
         .setTimestamp();
 
@@ -146,9 +125,12 @@ module.exports = {
       const targetChannel = logChannelId ? interaction.guild.channels.cache.get(logChannelId) : interaction.channel;
 
       await targetChannel.send({ content: `${role}`, embeds: [embed] });
-      await interaction.editReply(`✅ Replaced and posted to ${targetChannel}.`);
+
+      await sellauth.deleteStockItem(stockItem.id);
+
+      await interaction.editReply(`✅ Pulled a stock item, posted it to ${targetChannel}, and removed it from stock.`);
     } catch (err) {
-      await interaction.editReply({ embeds: [errorEmbed('Could not replace delivered item', err)] });
+      await interaction.editReply({ embeds: [errorEmbed('Could not pull stock item', err)] });
     }
   },
 };
