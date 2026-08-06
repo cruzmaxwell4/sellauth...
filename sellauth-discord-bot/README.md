@@ -12,7 +12,7 @@ lookups, a "claim your role" panel, coupons, replacements, revenue stats, and mo
 | `/sellauthdomain set/list/remove` | Manage your store's custom domain |
 | `/sellauthemail email` | Last 50 purchases for an email |
 | `/sellauthclaimpanel` | Lets you edit the panel text, then sends the "Claim Role" panel with a button |
-| `/sellauthreplace invoice_id notify_role` | Replaces the delivered item on an invoice, posts result & pings a role |
+| `/sellauthreplace invoice_id product_id variant notify_role` | Replaces the delivered item on an invoice with a fresh product/variant from stock (autocomplete), posts result & pings a role |
 | `/sellauthmark invoice_id` | Marks a manual order (e.g. PayPal F&F) as paid so the buyer gets delivery |
 | `/sellauthc` | Lists all commands |
 | `/sellauthlink product` | Gets a checkout link for a product (autocomplete search) |
