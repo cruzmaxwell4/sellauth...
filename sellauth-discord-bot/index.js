@@ -12,6 +12,8 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  REST,
+  Routes,
 } = require('discord.js');
 
 const { decodeEmail, errorEmbed } = require('./src/helpers');
@@ -26,17 +28,34 @@ const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter((f) => f.endsWith('.js'));
 
 console.log(`📦 Loading ${commandFiles.length} commands...`);
+const commands = [];
 for (const file of commandFiles) {
   const command = require(path.join(commandsPath, file));
   if (command.data && command.data.name) {
     client.commands.set(command.data.name, command);
+    commands.push(command.data.toJSON());
     console.log(`  ✓ ${command.data.name}`);
   }
 }
 
-client.once('ready', () => {
+// ---- Register commands on bot ready ------------------------------------
+client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-  console.log(`📋 ${client.commands.size} commands loaded and ready`);
+  console.log(`📋 ${client.commands.size} commands loaded`);
+  
+  try {
+    console.log(`🔧 Registering ${commands.length} slash commands to Discord...`);
+    const rest = new REST().setToken(process.env.BOT_TOKEN);
+    
+    const result = await rest.put(
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.SERVER_ID),
+      { body: commands }
+    );
+    
+    console.log(`✅ Successfully registered ${result.length} slash commands!`);
+  } catch (err) {
+    console.error(`❌ Failed to register commands:`, err.message);
+  }
 });
 
 client.on('interactionCreate', async (interaction) => {
