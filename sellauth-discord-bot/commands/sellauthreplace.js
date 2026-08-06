@@ -85,7 +85,14 @@ module.exports = {
 
     try {
       const invoice = await sellauth.getInvoice(invoiceId);
+
+      console.log('[sellauthreplace] full invoice object:', JSON.stringify(invoice, null, 2));
+      console.log('[sellauthreplace] invoice.items:', JSON.stringify(invoice.items, null, 2));
+
       const item = (invoice.items && invoice.items[0]) || null;
+
+      console.log('[sellauthreplace] extracted item:', JSON.stringify(item, null, 2));
+      console.log('[sellauthreplace] item.id:', item && item.id);
 
       if (!item) {
         await interaction.editReply('This invoice has no items to replace.');
@@ -111,6 +118,11 @@ module.exports = {
           variant_id: variant.id,
         },
       };
+
+      console.log(
+        '[sellauthreplace] replaceDeliveredBody:',
+        JSON.stringify(replaceDeliveredBody, null, 2)
+      );
 
       const result = await sellauth.replaceDelivered(invoiceId, replaceDeliveredBody);
 
