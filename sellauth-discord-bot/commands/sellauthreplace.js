@@ -187,12 +187,32 @@ module.exports = {
       // SellAuth's "replace delivered" endpoint expects an invoice_item_id
       // and a `replacements` object containing the replacement content to
       // deliver in place of the existing item.
-      const result = await sellauth.replaceDelivered(invoiceId, {
+      const replaceDeliveredBody = {
         invoice_item_id: item.id,
         replacements: {
           content: replacement,
         },
+      };
+
+      // Debug logging: the replaceDelivered call has been observed to 404
+      // even when getInvoice succeeds with the same invoiceId. Log the
+      // exact values being sent so we can spot mutation/trimming/encoding
+      // issues before the request goes out.
+      console.log('[sellauthreplace] Debug before replaceDelivered call:', {
+        invoiceId,
+        invoiceIdType: typeof invoiceId,
+        invoiceIdLength: invoiceId ? invoiceId.length : null,
+        invoiceIdJSON: JSON.stringify(invoiceId),
+        invoiceIdCharCodes: invoiceId ? Array.from(invoiceId).map((c) => c.charCodeAt(0)) : null,
+        productId,
+        productIdType: typeof productId,
+        variantId,
+        variantIdType: typeof variantId,
+        requestBody: replaceDeliveredBody,
+        requestBodyJSON: JSON.stringify(replaceDeliveredBody),
       });
+
+      const result = await sellauth.replaceDelivered(invoiceId, replaceDeliveredBody);
 
       const embed = new EmbedBuilder()
         .setColor(0x57f287)
