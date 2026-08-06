@@ -124,7 +124,7 @@ module.exports = {
         JSON.stringify(replaceDeliveredBody, null, 2)
       );
 
-      const result = await sellauth.replaceDelivered(invoiceId, replaceDeliveredBody);
+      const result = await sellauth.replaceDelivered(invoiceId, item.id, replaceDeliveredBody);
 
       const embed = new EmbedBuilder()
         .setColor(0x57f287)
