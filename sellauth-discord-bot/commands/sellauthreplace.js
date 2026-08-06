@@ -7,20 +7,71 @@ const config = require('../config.json');
 // Pulls whatever "content to deliver" field SellAuth put on a variant. The
 // exact shape isn't fully documented, so we check the common possibilities
 // in order of likelihood before giving up.
+//
+// Helper: given a single deliverable entry (string or object), pull out its
+// textual content.
+function extractDeliverableText(entry) {
+  if (!entry) return null;
+  if (typeof entry === 'string') return entry;
+  if (typeof entry === 'object') {
+    return (
+      entry.content ||
+      entry.delivery ||
+      entry.deliverable ||
+      entry.value ||
+      entry.text ||
+      entry.data ||
+      null
+    );
+  }
+  return null;
+}
+
 function extractVariantContent(variant) {
   if (!variant) return null;
 
+  // 1. SellAuth commonly nests the actual stock/content under a
+  // `deliverables` array on the variant. Prefer this first.
+  if (Array.isArray(variant.deliverables) && variant.deliverables.length) {
+    const text = extractDeliverableText(variant.deliverables[0]);
+    if (text) return text;
+  }
+
+  // 2. Plain string fields directly on the variant.
   if (typeof variant.content === 'string' && variant.content) return variant.content;
   if (typeof variant.delivery === 'string' && variant.delivery) return variant.delivery;
   if (typeof variant.deliverable === 'string' && variant.deliverable) return variant.deliverable;
   if (typeof variant.value === 'string' && variant.value) return variant.value;
 
-  const stockList = variant.stock || variant.deliverables || variant.items;
+  // 3. Other possible array fields holding stock/deliverable entries.
+  const stockList = variant.stock || variant.items || variant.stocks || variant.stock_items;
   if (Array.isArray(stockList) && stockList.length) {
-    const first = stockList[0];
-    if (typeof first === 'string') return first;
-    if (first && typeof first === 'object') {
-      return first.content || first.delivery || first.value || first.text || null;
+    const text = extractDeliverableText(stockList[0]);
+    if (text) return text;
+  }
+
+  // 4. Sometimes the variant object itself *is* the deliverable (e.g. when
+  // the API returns a flattened stock entry rather than a variant wrapper).
+  // If it has an identifiable stock indicator and no nested structure was
+  // found above, treat the variant as the deliverable content itself.
+  const looksLikeStockCount = Number(variant.stock_count ?? variant.quantity ?? variant.stock);
+  const hasStock = !Number.isNaN(looksLikeStockCount) ? looksLikeStockCount > 0 : true;
+  if (hasStock && (variant.content !== undefined || variant.data !== undefined)) {
+    const text = extractDeliverableText(variant.content) || extractDeliverableText(variant.data);
+    if (text) return text;
+  }
+
+  // 5. Last resort: if the variant has *some* content-bearing fields, fall
+  // back to a JSON representation so we don't falsely report "no stock"
+  // when data is actually present in an unexpected shape.
+  const hasAnyContentField = ['content', 'delivery', 'deliverable', 'value', 'data', 'deliverables', 'stock', 'items']
+    .some((key) => variant[key] !== undefined && variant[key] !== null);
+  if (hasAnyContentField) {
+    try {
+      const json = JSON.stringify(variant.deliverables || variant.content || variant.data || variant);
+      if (json && json !== '{}' && json !== '[]' && json !== 'null') return json;
+    } catch (err) {
+      // ignore stringify errors and fall through to null
     }
   }
 
