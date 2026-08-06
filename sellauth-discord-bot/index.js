@@ -19,6 +19,8 @@ const {
 const { decodeEmail, errorEmbed } = require('./src/helpers');
 const { buildEmailHistoryEmbed } = require('./src/emailLookup');
 const { resolveClaim } = require('./src/claimRole');
+const { buildDeliveredEmbed } = require('./src/deliveredLookup');
+const sellauth = require('./src/sellauthApi');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection();
@@ -88,6 +90,27 @@ client.on('interactionCreate', async (interaction) => {
           await interaction.editReply({ embeds: [embed] });
         } catch (err) {
           await interaction.editReply({ embeds: [errorEmbed('Could not fetch purchase history', err)] });
+        }
+        return;
+      }
+
+      if (interaction.customId.startsWith('show_delivered:')) {
+        const [, ownerId, invoiceId] = interaction.customId.split(':');
+        if (interaction.user.id !== ownerId) {
+          await interaction.reply({
+            content: '🚫 Only the person who ran this command can view the delivered content.',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          const invoice = await sellauth.getInvoice(invoiceId);
+          const embed = buildDeliveredEmbed(invoice);
+          await interaction.editReply({ embeds: [embed] });
+        } catch (err) {
+          await interaction.editReply({ embeds: [errorEmbed('Could not fetch delivered content', err)] });
         }
         return;
       }
