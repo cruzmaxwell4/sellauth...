@@ -185,10 +185,13 @@ module.exports = {
       }
 
       // SellAuth's "replace delivered" endpoint expects an invoice_item_id
-      // and the replacement content to deliver in place of the existing item.
+      // and a `replacements` object containing the replacement content to
+      // deliver in place of the existing item.
       const result = await sellauth.replaceDelivered(invoiceId, {
         invoice_item_id: item.id,
-        replacement: replacement,
+        replacements: {
+          content: replacement,
+        },
       });
 
       const embed = new EmbedBuilder()
