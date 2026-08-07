@@ -6,7 +6,6 @@ const {
   ButtonStyle,
 } = require('discord.js');
 const sellauth = require('../src/sellauthApi');
-const { requireOwner } = require('../src/permissions');
 const { money, formatDate, errorEmbed, encodeEmail } = require('../src/helpers');
 
 function buildInvoiceEmbed(invoice) {
@@ -46,7 +45,6 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!(await requireOwner(interaction))) return;
     await interaction.deferReply();
 
     const invoiceId = interaction.options.getString('invoice_id');
@@ -91,3 +89,4 @@ module.exports = {
     }
   },
 };
+
