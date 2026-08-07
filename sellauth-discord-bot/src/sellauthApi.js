@@ -119,21 +119,25 @@ async function getNextStockItem(variantId) {
 
       console.log(`[sellauthApi] getNextStockItem: found ${invoices.length} invoice(s)`);
 
+      if (invoices.length > 0) {
+        console.log(`[sellauthApi] getNextStockItem: first invoice structure:`, JSON.stringify(invoices[0], null, 2));
+      }
+
       // Find first undelivered invoice
       for (const invoice of invoices) {
         // Check if this invoice's items match the variant
         const items = invoice.items || [];
+        
+        console.log(
+          `[sellauthApi] getNextStockItem: invoice ${invoice.id} has ${items.length} item(s), delivered=${invoice.delivered}, status=${invoice.status}, delivery_status=${invoice.delivery_status}`
+        );
+
         for (const item of items) {
           const itemVariantId =
             item.variant_id || item.variantId || item.product_variant_id || item.variant?.id;
-          const isUndelivered =
-            !invoice.delivered &&
-            !invoice.delivery_status ||
-            invoice.delivery_status === 'pending' ||
-            invoice.delivery_status === 'undelivered';
-
+          
           console.log(
-            `[sellauthApi] getNextStockItem: checking invoice ${invoice.id}, item variant=${itemVariantId}, delivered=${invoice.delivered}, delivery_status=${invoice.delivery_status}`
+            `[sellauthApi] getNextStockItem: item variant_id=${itemVariantId}, looking for ${variantId}, match=${String(itemVariantId) === String(variantId)}`
           );
 
           if (String(itemVariantId) === String(variantId)) {
@@ -158,7 +162,7 @@ async function getNextStockItem(variantId) {
   }
 
   throw new Error(
-    `Could not find a stock item for variant ${variantId}. Attempts:\\n${errors.join('\\n')}`
+    `Could not find a stock item for variant ${variantId}. Attempts:\n${errors.join('\n')}`
   );
 }
 
